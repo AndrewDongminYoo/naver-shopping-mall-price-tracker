@@ -31,13 +31,15 @@ def naver_shopping_search(word, low_price):
     response = requests.get(url, headers=headers)
     start += display
     body = response.json()
-    for data in body["items"]:
-        print(data['title'], compare(data['lprice'], low_price))
+    if "items" in body:
+        for data in body["items"]:
+            if not bigger_than(data['lprice'], low_price):
+                print(data["title"], data["lprice"], low_price, data["link"])
 
 
-def compare(price1, price2):
-    print(price1, price2)
-    return int(price1) >= price2
+def bigger_than(is_bigger, is_smaller):
+    return int(is_bigger) >= int(is_smaller)
+
 
 def main():
     wb: Workbook = load_workbook(
@@ -50,11 +52,11 @@ def main():
         max_row=sheet_ranges.max_row,
         min_row=3,
         min_col=1,
-        values_only=True,
     )
     for value in values:
-        print(value)
-        # naver_shopping_search(value[1].value, value[7].value)
+        index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = value
+        # index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = map(lambda x: x.value, value)
+        naver_shopping_search(code.value, fifteen.value)
 
 
 if __name__ == '__main__':
