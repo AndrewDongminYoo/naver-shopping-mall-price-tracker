@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
 import re
-import time
 from urllib.parse import quote, urlparse
 import requests
 import selenium.webdriver
@@ -79,75 +78,49 @@ def get_soup(driver: selenium.webdriver.Chrome, url):
     return BeautifulSoup(source, "html.parser")
 
 
-def eleven(soup):
-    return soup.select_one("#provisionNotice > table > tbody > tr:-soup-contains('A/S') > td").text
+def get_number(soup, css_selector):
+    string = soup.select_one(css_selector)
+    if string:
+        return string.text
 
-
-def auction(soup):
-    return soup.select_one("ul.prodnoti_lst > li:-soup-contains('A/S') > span.cont").text
-
-
-def on_style(soup):
-    return soup.select_one(
-        "#_itemExplainAreaInfo > div.original_ex > div > table > tbody > tr:-soup-contains('A/S') > td").text
-
-
-def lotte(soup):
-    return soup.select_one(
-        "#contents > div.detail_sec > div.division_product_tab.fixed > div.content_detail > div.wrap_detail.content2.on > div > div:nth-child(3) > table > tbody > tr:-soup-contains('A/S') > td").text
-
-
-def smart_store(soup):
-    return soup.select_one(
-        "#INTRODUCE > div > div.attribute_wrapper > div > div > table > tbody > tr:-soup-contains('A/S') > td > div:nth-child(1)").text
-
-
-def gee9(soup):
-    return soup.select_one("#info_tab1_sub1 > div > div > table > tbody > tr:-soup-contains('A/S') > td > div").text
-
-
-def we_make_price(soup):
-    return soup.select_one(
-        "#productdetails > div > div.deal_detailinfo > ul > li > div > table > tbody > tr:-soup-contains('A/S') > td:nth-child(2)").text
-
-
-def tmon(soup):
-    return soup.select_one(
-        "#_wrapProductInfoNotes > div > div > div > table > tbody > tr:-soup-contains('A/S') > td").text
-
-
-def unit(soup):
-    return "본점"
-
-
-def lotte_on(soup):
-    return soup.select_one("table > tr:-soup-contains('업체명') > td > p").text
-
-
-def g_market(soup):
-    return soup.select_one(
-        "#vip-tab_detail > div.vip-detailarea_productinfo > div.box__product-notice-list > table:nth-child(2) > tbody > tr:-soup-contains('A/S') > td").text
-
-
-def interpark(soup):
-    return soup.select_one("#productInfoProvideNotification > div:nth-child(3) > dl:-soup-contains('A/S') > dd").text
-
-
-def gs_shop(soup):
-    return soup.select_one(
-        "#ProTab04 > div.normalN_table_wrap.more > table > tbody > tr:-soup-contains('A/S') > td").text
 
 
 def find_cs_number(soup: BeautifulSoup, url_string):
-    switch = {'https://www.11st.co.kr/': eleven, 'https://www.lotteimall.com/': lotte,
-              'https://www.lotteon.com/': lotte_on, 'http://item.gmarket.co.kr/': g_market,
-              'https://with.gsshop.com/': gs_shop, 'https://display.cjonstyle.com/': on_style,
-              'http://itempage3.auction.co.kr/': auction, 'https://shopping.interpark.com/': interpark,
-              'https://smartstore.naver.com/': smart_store, 'https://front.wemakeprice.com/': we_make_price,
-              'https://www.tmon.co.kr/': tmon, 'http://mahaknit.com/': unit,
-              'https://www.g9.co.kr/': gee9, 'https://shopping.naver.com/': unit}
+    switch = {
+        'https://www.lotteon.com/': "table > tr:-soup-contains('업체명') > td > p",
+        'https://www.11st.co.kr/': "#provisionNotice > table > tbody > tr:nth-child(9) > td",
+        'http://itempage3.auction.co.kr/':
+            "ul.prodnoti_lst > li:-soup-contains('A/S') > span.cont",
+        'https://www.lotteimall.com/':
+            "#contents > div.detail_sec > div.division_product_tab.fixed > div.content_detail > "
+            "div.wrap_detail.content2.on > div > div:nth-child(3) > table > tbody > tr:nth-child(9) > td",
+        'http://item.gmarket.co.kr/':
+            "#vip-tab_detail > div.vip-detailarea_productinfo > div.box__product-notice-list > "
+            "table:nth-child(2) > tbody > tr:-soup-contains('A/S') > td",
+        'https://with.gsshop.com/':
+            "#ProTab04 > div.normalN_table_wrap.more > table > tbody > tr:-soup-contains('A/S') > td",
+        'https://display.cjonstyle.com/':
+            "#_itemExplainAreaInfo > div.original_ex > div > table > tbody > tr:-soup-contains('A/S') > td",
+        'https://shopping.interpark.com/':
+            "#productInfoProvideNotification > div:nth-child(3) > dl:-soup-contains('A/S') > dd",
+        'https://smartstore.naver.com/':
+            "#INTRODUCE > div > div.product_info_notice > div > table > tbody > tr:nth-child(9) > td",
+        'https://front.wemakeprice.com/':
+            "#productdetails > div > div.deal_detailinfo > ul > li > div > table > tbody > tr:-soup-contains('A/S') > "
+            "td:nth-child(2)",
+        'https://www.tmon.co.kr/':
+            "#_wrapProductInfoNotes > div > div > div > table > tbody > tr:-soup-contains('A/S') > td",
+        'https://www.g9.co.kr/': "#info_tab1_sub1 > div > div > table > tbody > tr:-soup-contains('A/S') > td > div",
+        'https://shopping.naver.com/': "",
+        'http://mahaknit.com/': "",
+    }
     host_url = get_host_from_url(url_string)
-    return switch[host_url](soup)
+    try:
+        answer = get_number(soup, switch[host_url])
+    except AttributeError:
+        print(url_string)
+        answer = "없음"
+    return answer
 
 
 def get_host_from_url(url_string):
