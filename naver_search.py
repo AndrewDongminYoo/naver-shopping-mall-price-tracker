@@ -4,6 +4,8 @@ import re
 import time
 from urllib.parse import quote, urlparse
 import requests
+import selenium.webdriver
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -36,7 +38,6 @@ host_dict = dict(
     unit="http://mahaknit.com/",
     shopping="https://shopping.naver.com/",
 )
-hosts = list(host_dict.values())
 
 product_type = {
     "1": "일반상품 가격비교 상품",
@@ -53,6 +54,15 @@ product_type = {
     "12": "가격비교 매칭 판매예정상품",
 }
 
+store_types = {'02-772-3343': '본점', '02-2143-7251': '잠실점', '02-2164-5353': '영등포점', '02-3707-1321': '청량리점',
+               '02-3289-8007': '관악점', '02-531-2224': '강남점', '02-950-2268': '노원점', '02-944-2274': '미아점',
+               '02-2218-3404': '건대점', '02-6116-3051': '김포공항점', '02-6965-2661': '서울역점', '031-738-2217': '분당점',
+               '031-909-3486': '일산점', '032-320-7298': '중동점', '031-412-7772': '안산점', '031-8086-9250': '평촌점',
+               '031-8066-0286': '수원점', '032-242-2234': '인천터미널점', '031-8036-3746': '동탄점', '051-810-4280': '부산본점',
+               '062-221-1308': '광주점', '042-601-2337': '대전점', '054-230-1345': '포항점', '052-960-4954': '울산점',
+               '051-668-4254': '동래점', '055-279-3377': '창원점', '053-660-3322': '대구점', '053-258-3213': '상인점',
+               '063-289-3252': '전주점', '061-801-2156': '남악점', '051-678-3488': '광복점'}
+
 
 def extract_title(string):
     string = re.sub(r"\[?유닛]?", "", string)
@@ -63,7 +73,94 @@ def extract_title(string):
     return string.strip()
 
 
-def redirect_url(code, url, product_types):
+def get_soup(driver: selenium.webdriver.Chrome, url):
+    driver.get(url)
+    source = driver.page_source
+    return BeautifulSoup(source, "html.parser")
+
+
+def eleven(soup):
+    return soup.select_one("#provisionNotice > table > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def auction(soup):
+    return soup.select_one("ul.prodnoti_lst > li:-soup-contains('A/S') > span.cont").text
+
+
+def on_style(soup):
+    return soup.select_one(
+        "#_itemExplainAreaInfo > div.original_ex > div > table > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def lotte(soup):
+    return soup.select_one(
+        "#contents > div.detail_sec > div.division_product_tab.fixed > div.content_detail > div.wrap_detail.content2.on > div > div:nth-child(3) > table > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def smart_store(soup):
+    return soup.select_one(
+        "#INTRODUCE > div > div.attribute_wrapper > div > div > table > tbody > tr:-soup-contains('A/S') > td > div:nth-child(1)").text
+
+
+def gee9(soup):
+    return soup.select_one("#info_tab1_sub1 > div > div > table > tbody > tr:-soup-contains('A/S') > td > div").text
+
+
+def we_make_price(soup):
+    return soup.select_one(
+        "#productdetails > div > div.deal_detailinfo > ul > li > div > table > tbody > tr:-soup-contains('A/S') > td:nth-child(2)").text
+
+
+def tmon(soup):
+    return soup.select_one(
+        "#_wrapProductInfoNotes > div > div > div > table > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def unit(soup):
+    return "본점"
+
+
+def lotte_on(soup):
+    return soup.select_one("table > tr:-soup-contains('업체명') > td > p").text
+
+
+def g_market(soup):
+    return soup.select_one(
+        "#vip-tab_detail > div.vip-detailarea_productinfo > div.box__product-notice-list > table:nth-child(2) > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def interpark(soup):
+    return soup.select_one("#productInfoProvideNotification > div:nth-child(3) > dl:-soup-contains('A/S') > dd").text
+
+
+def gs_shop(soup):
+    return soup.select_one(
+        "#ProTab04 > div.normalN_table_wrap.more > table > tbody > tr:-soup-contains('A/S') > td").text
+
+
+def find_cs_number(soup: BeautifulSoup, url_string):
+    switch = {'https://www.11st.co.kr/': eleven, 'https://www.lotteimall.com/': lotte,
+              'https://www.lotteon.com/': lotte_on, 'http://item.gmarket.co.kr/': g_market,
+              'https://with.gsshop.com/': gs_shop, 'https://display.cjonstyle.com/': on_style,
+              'http://itempage3.auction.co.kr/': auction, 'https://shopping.interpark.com/': interpark,
+              'https://smartstore.naver.com/': smart_store, 'https://front.wemakeprice.com/': we_make_price,
+              'https://www.tmon.co.kr/': tmon, 'http://mahaknit.com/': unit,
+              'https://www.g9.co.kr/': gee9, 'https://shopping.naver.com/': unit}
+    host_url = get_host_from_url(url_string)
+    return switch[host_url](soup)
+
+
+def get_host_from_url(url_string):
+    hosts = list(host_dict.values())
+    parsed = urlparse(url_string)
+    host_url = f"{parsed.scheme}://{parsed.netloc}/"
+    if host_url not in hosts:
+        hosts.append(host_url)
+        print(host_url)
+    return host_url
+
+
+def redirect_url(driver, url, product_types):
     with Chrome() as driver:
         driver.get(url)
         driver.implicitly_wait(10)
@@ -78,18 +175,12 @@ def redirect_url(code, url, product_types):
                 driver.switch_to.window(tabs[1])
             wait.until_not(EC.url_contains("cr.shopping.naver.com"))
         except NoSuchElementException as e:
-            # print("실패:", product_types)
             pass
         except TimeoutException as e:
             print("응답 시간 초과")
         else:
-            # print("성공:", product_types)
             pass
-        parsed = urlparse(driver.current_url)
-        host_url = f"{parsed.scheme}://{parsed.netloc}/"
-        if host_url not in hosts:
-            hosts.append(host_url)
-            print(hosts)
+        get_host_from_url(driver.current_url)
         return driver.current_url
 
 
@@ -109,13 +200,16 @@ def naver_shopping_search(word, low_price):
     response = requests.get(url, headers=headers)
     start += display
     body = response.json()
-    if "items" in body:
-        for data in body["items"]:
-            # print(data["mallName"], product_type[data["productType"]])
-            if not bigger_than(data['lprice'], low_price):
-                url = redirect_url(word, data["link"], product_type[data["productType"]])
-                title = extract_title(data['title'])
-                print(title, data["lprice"], low_price, url)
+    with Chrome() as driver:
+        if "items" in body:
+            for data in body["items"]:
+                # print(data["mallName"], product_type[data["productType"]])
+                if not bigger_than(data['lprice'], low_price):
+                    url = redirect_url(driver, data["link"], product_type[data["productType"]])
+                    title = extract_title(data['title'])
+                    soup = get_soup(driver, url)
+                    cs_number = find_cs_number(soup, url)
+                    print(title, cs_number, data["lprice"], low_price)
 
 
 def bigger_than(is_bigger, is_smaller):
@@ -135,7 +229,6 @@ def main():
         min_col=1,
     )
     for value in values:
-        store = ["본점", "잠실", "청량리", "부산본점", "동탄", "중동", "대전", "광주", "강남", "수원", "동래", "노원", "대구", "안산", "평촌"]
         index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = value
         # index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = map(lambda x: x.value, value)
         naver_shopping_search(code.value, dsc_price.value)
