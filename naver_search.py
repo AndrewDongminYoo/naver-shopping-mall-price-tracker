@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 import os
 import re
-from urllib.parse import quote, urlparse
+import csv
+import time
+from _csv import _writer
+
 import requests
-import selenium.webdriver
-from bs4 import BeautifulSoup
+from datetime import datetime
+from urllib.parse import quote, urlparse
 from dotenv import load_dotenv
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver import Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
@@ -62,6 +64,14 @@ store_types = {'02-772-3343': '본점', '02-2143-7251': '잠실점', '02-2164-53
                '051-668-4254': '동래점', '055-279-3377': '창원점', '053-660-3322': '대구점', '053-258-3213': '상인점',
                '063-289-3252': '전주점', '061-801-2156': '남악점', '051-678-3488': '광복점'}
 
+store_types2 = {
+    "EB": "본점", "IM": "본점", "BJ": "본점", "IJS": "잠실점", "EYD": "영등포점", "YDP": "영등포점", "ECL": "청량리점", "EGN": "강남점",
+    "ENW": "노원점", "INW": "노원점", "TNW": "노원점", "EGP": "김포공항점", "EIS": "일산점", "ISS": "일산점", "EJD": "중동점", "IJD": "중동점",
+    "EAS": "안산점", "IAS": "안산점", "AS": "안산점", "EPC": "평촌점", "IM": "평촌점", "ESW": "수원점", "ISW": "수원점", "ICC": "인천터미널점",
+    "IC": "인천터미널점", "EDT": "동탄점", "IMT": "동탄점", "MDT": "동탄점", "EBS": "부산본점", "EGJ": "광주점", "IJ": "광주점", "EDJ": "대전점",
+    "IDJ": "대전점", "EDR": "동래점", "IDR": "동래점", "EDG": "대구점", "IDG": "대구점", "DGG": "대구점", "EGB": "광복점",
+}
+
 
 def extract_title(string):
     string = re.sub(r"\[?유닛]?", "", string)
@@ -73,58 +83,18 @@ def extract_title(string):
 
 
 def extract_phone(string):
-    phone_regex = re.compile(r"(\d{2,3}-\d{3,4}-\d{4})|(\d{4}-\d{4})")
+    phone_regex = re.compile(r"(0\d{1,2}-\d{3,4}-\d{4})|(1\d{3}-\d{4})")
     match = phone_regex.search(string)
     if match:
         return match.group()
-    return "[no-phone-number]"
+    return "none"
 
 
-def get_soup(source):
-    return BeautifulSoup(source, "html.parser")
-
-
-def get_number(soup, css_selector):
-    string = soup.select_one(css_selector)
-    return string.text if string else soup.find(css_selector).text
-
-
-def find_cs_number(page_source: str, soup: BeautifulSoup, url_string):
-    switch = {
-        'https://www.lotteon.com/': "table > tr:-soup-contains('업체명') > td > p",
-        'https://www.11st.co.kr/': "div.prodc_return_wrap > table > tbody > tr:nth-child(9) > td",
-        'http://itempage3.auction.co.kr/':
-            "#ucOfficialNotice_ulMain > li:nth-child(12) > span.cont",
-        'https://www.lotteimall.com/':
-            "#contents > div.detail_sec > div.division_product_tab > div.content_detail > div.wrap_detail.content2 > "
-            "div > div:nth-child(3) > table > tbody > tr:last-child > td",
-        'http://item.gmarket.co.kr/':
-            "#vip-tab_detail > div.vip-detailarea_productinfo > div.box__product-notice-list > "
-            "table:nth-child(2) > tbody > tr:-soup-contains('A/S') > td",
-        'https://with.gsshop.com/':
-            "#ProTab04 > div.normalN_table_wrap.more > table > tbody > tr:-soup-contains('A/S') > td",
-        'https://display.cjonstyle.com/':
-            "#_INFO > div:nth-child(3) > table > tbody > tr:last-child > td",
-        'https://shopping.interpark.com/':
-            "#productInfoProvideNotification > div:nth-child(3) > dl:-soup-contains('A/S') > dd",
-        'https://smartstore.naver.com/':
-            "#INTRODUCE > div > div.product_info_notice > div > table > tbody > tr:last-child",
-        'https://front.wemakeprice.com/':
-            "#productdetails > div > div.deal_detailinfo > ul > li > div > table > tbody > tr:-soup-contains('A/S') > "
-            "td:nth-child(2)",
-        'https://www.tmon.co.kr/':
-            "#_wrapProductInfoNotes > div > div > div > table > tbody > tr:-soup-contains('A/S') > td",
-        'https://www.g9.co.kr/': "#info_tab1_sub1 > div > div > table > tbody > tr:-soup-contains('A/S') > td > div",
-        'https://shopping.naver.com/': "",
-        'https://cr.shopping.naver.com/': "",
-        'http://mahaknit.com/': "",
-    }
-    host_url = get_host_from_url(url_string)
-    if switch.get(host_url):
-        find_text = soup.select_one(switch[host_url])
-        if find_text:
-            return find_text.text.strip()
-    return extract_phone(page_source)
+def find_cs_number(page_source: str):
+    phone = extract_phone(page_source)
+    if phone in store_types:
+        return store_types[phone]
+    return phone
 
 
 def get_host_from_url(url_string):
@@ -152,17 +122,24 @@ def redirect_url(url, product_types):
                 driver.switch_to.window(tabs[1])
             if driver.current_url.startswith("https://display.cjonstyle.com/"):
                 driver.execute_script('document.querySelector("#promotion_layer > div > div > div > a").click()')
-            wait.until_not(EC.url_matches(r"https\:\/\/cr\.shopping\.naver\.com\/.*"))
             wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "body > div")))
-            page_source = driver.page_source or driver.execute_script("return document.body.innerHTML;")
+            wait.until_not(EC.url_matches(r"https://cr.shopping.naver.com/.*"))
+            time.sleep(0.5)
+            page_source = driver.page_source
             return page_source, driver.current_url
-        except NoSuchElementException as e:
-            print("대상 버튼 없음", driver.current_url)
-        except TimeoutException as e:
-            print("응답 시간 초과:", driver.current_url)
+        except Exception as e:
+            print("예외 발생", driver.current_url)
 
 
-def naver_shopping_search(word, low_price):
+def find_model_name(source, word):
+    model_name = re.search(f"{word}-([A-Za-z]+)", source)
+    if model_name:
+        if (model_name.group(1)).upper() in store_types2:
+            return store_types2[model_name.group(1)]
+    return "none"
+
+
+def naver_shopping_search(csv_writer: _writer, index: int, season: str, word: str, low_price: int | str):
     display = 100
     start = 1
 
@@ -180,15 +157,12 @@ def naver_shopping_search(word, low_price):
     body = response.json()
     if "items" in body:
         for data in body["items"]:
-            # print(data["mallName"], product_type[data["productType"]])
             if not bigger_than(data['lprice'], low_price):
                 title = extract_title(data['title'])
                 source, url = redirect_url(data["link"], product_type[data["productType"]])
-                soup = get_soup(source)
-                cs_number = find_cs_number(source, soup, url)
-                if cs_number == "[cannot-find]" or cs_number == "[no-phone-number]":
-                    print(url)
-                print(title, cs_number, data["lprice"], low_price)
+                cs_number = find_cs_number(source)
+                model_name = find_model_name(source, word)
+                csv_writer.writerow([index, word, title, cs_number, model_name, season, int(data["lprice"]), int(low_price)])
 
 
 def bigger_than(is_bigger, is_smaller):
@@ -196,21 +170,27 @@ def bigger_than(is_bigger, is_smaller):
 
 
 def main():
-    wb: Workbook = load_workbook(
-        filename=filename,
-        data_only=True,
-    )
-    sheet_ranges: Worksheet = wb[sheet_name]
-    values = sheet_ranges.iter_rows(
-        max_col=sheet_ranges.max_column,
-        max_row=sheet_ranges.max_row,
-        min_row=2,
-        min_col=1,
-    )
-    for value in values:
-        index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = value
-        # index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = map(lambda x: x.value, value)
-        naver_shopping_search(code.value, dsc_price.value)
+    dateformat = datetime.now().strftime("%Y%m%d-%H%M%S")
+    new_filename = f".\\data\\result_{dateformat}.csv"
+    with open(new_filename, "w", encoding="utf-8") as f:
+        writer = csv.writer(f, delimiter=",", lineterminator="\n")
+        writer.writerow(["NO", "스타일코드", "한글명", "지점_연락처", "지점_코드", "시즌", "판매가", "공식할인가"])
+        wb: Workbook = load_workbook(
+            filename=filename,
+            data_only=True,
+        )
+        sheet_ranges: Worksheet = wb[sheet_name]
+        values = sheet_ranges.iter_rows(
+            max_col=sheet_ranges.max_column,
+            max_row=sheet_ranges.max_row,
+            min_row=2,
+            min_col=1,
+        )
+        for value in values:
+            index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = value
+            # index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = map(lambda x: x.value, value)
+            naver_shopping_search(writer, index.value, season.value, code.value, dsc_price.value)
+        f.close()
 
 
 if __name__ == '__main__':
