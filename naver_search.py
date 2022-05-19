@@ -3,8 +3,6 @@ import os
 import re
 import csv
 import time
-from _csv import _writer
-
 import requests
 from datetime import datetime
 from urllib.parse import quote, urlparse
@@ -67,7 +65,7 @@ store_types = {'02-772-3343': '본점', '02-2143-7251': '잠실점', '02-2164-53
 store_types2 = {
     "EB": "본점", "IM": "본점", "BJ": "본점", "IJS": "잠실점", "EYD": "영등포점", "YDP": "영등포점", "ECL": "청량리점", "EGN": "강남점",
     "ENW": "노원점", "INW": "노원점", "TNW": "노원점", "EGP": "김포공항점", "EIS": "일산점", "ISS": "일산점", "EJD": "중동점", "IJD": "중동점",
-    "EAS": "안산점", "IAS": "안산점", "AS": "안산점", "EPC": "평촌점", "IM": "평촌점", "ESW": "수원점", "ISW": "수원점", "ICC": "인천터미널점",
+    "EAS": "안산점", "IAS": "안산점", "AS": "안산점", "EPC": "평촌점", "ESW": "수원점", "ISW": "수원점", "ICC": "인천터미널점",
     "IC": "인천터미널점", "EDT": "동탄점", "IMT": "동탄점", "MDT": "동탄점", "EBS": "부산본점", "EGJ": "광주점", "IJ": "광주점", "EDJ": "대전점",
     "IDJ": "대전점", "EDR": "동래점", "IDR": "동래점", "EDG": "대구점", "IDG": "대구점", "DGG": "대구점", "EGB": "광복점",
 }
@@ -75,7 +73,7 @@ store_types2 = {
 
 def extract_title(string):
     string = re.sub(r"\[?유닛]?", "", string)
-    string = re.sub(r"\[?롯데백화점]?", "", string)
+    string = re.sub(r"\[?롯데백화점( 2관)?]?", "", string)
     string = re.sub(r"\[?\(?AVE\)?]?", "", string)
     string = re.sub(r"\[?\(?<b>.+</b>\)?]?", "", string)
     string = re.sub(r"\s+", " ", string)
@@ -87,7 +85,7 @@ def extract_phone(string):
     match = phone_regex.search(string)
     if match:
         return match.group()
-    return "none"
+    return ""
 
 
 def find_cs_number(page_source: str):
@@ -136,10 +134,10 @@ def find_model_name(source, word):
     if model_name:
         if (model_name.group(1)).upper() in store_types2:
             return store_types2[model_name.group(1)]
-    return "none"
+    return ""
 
 
-def naver_shopping_search(csv_writer: _writer, index: int, season: str, word: str, low_price: int | str):
+def naver_shopping_search(csv_writer: csv.writer, index: int, season: str, word: str, low_price: int | str):
     display = 100
     start = 1
 
@@ -162,34 +160,40 @@ def naver_shopping_search(csv_writer: _writer, index: int, season: str, word: st
                 source, url = redirect_url(data["link"], product_type[data["productType"]])
                 cs_number = find_cs_number(source)
                 model_name = find_model_name(source, word)
-                csv_writer.writerow([index, word, title, cs_number, model_name, season, int(data["lprice"]), int(low_price)])
+                host_name = get_host_from_url(url)
+                row = [index, word, title, cs_number, model_name, season,
+                       int(data["lprice"]), int(low_price),
+                       host_name, url]
+                csv_writer.writerow(row)
+                print(row)
 
 
 def bigger_than(is_bigger, is_smaller):
-    return int(is_bigger) >= int(is_smaller)
+    return int(is_bigger) >= int(is_smaller) * 0.9
 
 
 def main():
     dateformat = datetime.now().strftime("%Y%m%d-%H%M%S")
-    new_filename = f".\\data\\result_{dateformat}.csv"
-    with open(new_filename, "w", encoding="utf-8") as f:
+    new_filename = f"result_{dateformat}.csv"
+    with open(new_filename, mode="w", encoding="utf-8", newline="") as f:
         writer = csv.writer(f, delimiter=",", lineterminator="\n")
-        writer.writerow(["NO", "스타일코드", "한글명", "지점_연락처", "지점_코드", "시즌", "판매가", "공식할인가"])
+        header = ["NO", "스타일코드", "한글명", "지점_연락처", "지점_코드", "시즌", "판매가", "공식할인가", "판매처", "링크"]
+        writer.writerow(header)
         wb: Workbook = load_workbook(
             filename=filename,
             data_only=True,
         )
-        sheet_ranges: Worksheet = wb[sheet_name]
-        values = sheet_ranges.iter_rows(
-            max_col=sheet_ranges.max_column,
-            max_row=sheet_ranges.max_row,
+        worksheet: Worksheet = wb[sheet_name]
+        sheet_rows = worksheet.iter_rows(
+            max_col=worksheet.max_column,
+            max_row=worksheet.max_row,
             min_row=2,
             min_col=1,
         )
-        for value in values:
-            index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = value
-            # index, code, name, season, tag_price, dsc_price, ten, fifteen, *stores = map(lambda x: x.value, value)
+        for sheet_row in sheet_rows:
+            index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = sheet_row
             naver_shopping_search(writer, index.value, season.value, code.value, dsc_price.value)
+            break
         f.close()
 
 
