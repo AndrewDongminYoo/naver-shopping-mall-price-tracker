@@ -73,12 +73,14 @@ def extract_title(string):
 
 
 def extract_phone(string):
-    phone_regex = re.compile(r"\d{3}-\d{4}-\d{4}")
+    phone_regex = re.compile(r"(\d{2,3}-\d{3,4}-\d{4})|(\d{4}-\d{4})")
     match = phone_regex.search(string)
-    return match.group() if match else "[no-phone-number]"
+    if match:
+        return match.group()
+    return "[no-phone-number]"
 
 
-def get_soup(source, url):
+def get_soup(source):
     return BeautifulSoup(source, "html.parser")
 
 
@@ -87,14 +89,15 @@ def get_number(soup, css_selector):
     return string.text if string else soup.find(css_selector).text
 
 
-def find_cs_number(soup: BeautifulSoup, url_string):
+def find_cs_number(page_source: str, soup: BeautifulSoup, url_string):
     switch = {
         'https://www.lotteon.com/': "table > tr:-soup-contains('업체명') > td > p",
         'https://www.11st.co.kr/': "div.prodc_return_wrap > table > tbody > tr:nth-child(9) > td",
         'http://itempage3.auction.co.kr/':
             "#ucOfficialNotice_ulMain > li:nth-child(12) > span.cont",
         'https://www.lotteimall.com/':
-            "#contents > div.detail_sec > div.division_product_tab > div.content_detail > div.wrap_detail.content2 > div > div:nth-child(3) > table > tbody > tr:last-child",
+            "#contents > div.detail_sec > div.division_product_tab > div.content_detail > div.wrap_detail.content2 > "
+            "div > div:nth-child(3) > table > tbody > tr:last-child > td",
         'http://item.gmarket.co.kr/':
             "#vip-tab_detail > div.vip-detailarea_productinfo > div.box__product-notice-list > "
             "table:nth-child(2) > tbody > tr:-soup-contains('A/S') > td",
@@ -117,8 +120,11 @@ def find_cs_number(soup: BeautifulSoup, url_string):
         'http://mahaknit.com/': "",
     }
     host_url = get_host_from_url(url_string)
-    find_text = soup.select_one(switch[host_url]) if switch.get(host_url) else ""
-    return extract_phone(find_text.text) if find_text else "[cannot-find]"
+    if switch.get(host_url):
+        find_text = soup.select_one(switch[host_url])
+        if find_text:
+            return find_text.text.strip()
+    return extract_phone(page_source)
 
 
 def get_host_from_url(url_string):
@@ -142,17 +148,18 @@ def redirect_url(url, product_types):
                 btn2 = driver.find_element(By.XPATH, "//a[text()='사러가기']") or None
                 btn2.click() if btn2 else None
             tabs = driver.window_handles
-            driver.close() if len(tabs) > 1 else None
-            driver.switch_to.window(tabs[1]) if len(tabs) > 1 else None
+            if len(tabs) > 1:
+                driver.switch_to.window(tabs[1])
             if driver.current_url.startswith("https://display.cjonstyle.com/"):
                 driver.execute_script('document.querySelector("#promotion_layer > div > div > div > a").click()')
             wait.until_not(EC.url_matches(r"https\:\/\/cr\.shopping\.naver\.com\/.*"))
+            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "body > div")))
+            page_source = driver.page_source or driver.execute_script("return document.body.innerHTML;")
+            return page_source, driver.current_url
         except NoSuchElementException as e:
             print("대상 버튼 없음", driver.current_url)
         except TimeoutException as e:
             print("응답 시간 초과:", driver.current_url)
-        get_host_from_url(driver.current_url)
-        return driver.page_source, driver.current_url
 
 
 def naver_shopping_search(word, low_price):
@@ -171,16 +178,17 @@ def naver_shopping_search(word, low_price):
     response = requests.get(url, headers=headers)
     start += display
     body = response.json()
-    with Chrome() as driver:
-        if "items" in body:
-            for data in body["items"]:
-                # print(data["mallName"], product_type[data["productType"]])
-                if not bigger_than(data['lprice'], low_price):
-                    title = extract_title(data['title'])
-                    source, url = redirect_url(data["link"], product_type[data["productType"]])
-                    soup = get_soup(source, url)
-                    cs_number = find_cs_number(soup, url)
-                    print(title, cs_number, data["lprice"], low_price)
+    if "items" in body:
+        for data in body["items"]:
+            # print(data["mallName"], product_type[data["productType"]])
+            if not bigger_than(data['lprice'], low_price):
+                title = extract_title(data['title'])
+                source, url = redirect_url(data["link"], product_type[data["productType"]])
+                soup = get_soup(source)
+                cs_number = find_cs_number(source, soup, url)
+                if cs_number == "[cannot-find]" or cs_number == "[no-phone-number]":
+                    print(url)
+                print(title, cs_number, data["lprice"], low_price)
 
 
 def bigger_than(is_bigger, is_smaller):
