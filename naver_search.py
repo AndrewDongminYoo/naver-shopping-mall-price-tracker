@@ -177,8 +177,8 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
             driver.implicitly_wait(10)
             for data in body["items"]:
                 if not bigger_than(data['lprice'], low_price):
-                    title = extract_title(data['title'])
                     try:
+                        title = extract_title(data['title'])
                         source, url = redirect_url(driver, data["link"])
                         cs_number = find_cs_number(source)
                         model_name = find_model_name(source, word)
@@ -191,8 +191,8 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
                         ]
                         csv_writer.writerow(row)
                         print(row)
-                    except TypeError:
-                        pass
+                    except Exception as e:
+                        print(e.args)
 
 
 def bigger_than(is_bigger: str, is_smaller: int):

@@ -5,6 +5,7 @@ bs4==0.0.1
 certifi==2021.10.8
 cffi==1.15.0
 charset-normalizer==2.0.12
+chromedriver-autoinstaller==0.3.1
 cryptography==37.0.2
 et-xmlfile==1.1.0
 h11==0.13.0
