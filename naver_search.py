@@ -1,7 +1,6 @@
 import os
 import re
 import csv
-import time
 import requests
 from datetime import datetime
 from urllib.parse import quote, urlparse
@@ -9,12 +8,18 @@ from dotenv import load_dotenv
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
 from selenium.webdriver import Chrome
+from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import chromedriver_autoinstaller
 
 chrome_path = chromedriver_autoinstaller.install()
+chrome_options = Options()
+chrome_options.add_argument("--no-sandbox")
+chrome_options.add_argument("--headless")
+chrome_options.add_argument("--disable-gpu")
+chrome_options.add_argument("--remote-debugging-port=9230")
 load_dotenv()
 filename = "data.xlsx"
 sheet_name = "아이템 정보"
@@ -125,17 +130,18 @@ def get_host_from_url(url_string):
     return host_url
 
 
-def redirect_url(driver, url, product_types):
+def redirect_url(driver, url):
     find_all_href = [url]
     req = None
     while find_all_href:
-        req = requests.get(find_all_href[0], allow_redirects=True)
-        find_all_href = re.compile(r"https://cr.shopping.naver.com/[a-zA-Z\d%&?.=/]+").findall(req.text)
-    find_all_redirects = re.compile(r'targetUrl = "([a-zA-Z\d:%&?.=/_]+)"').findall(req.text)
-    driver.get(find_all_redirects.pop())
+        url = find_all_href[0]
+        req = requests.get(url, allow_redirects=True)
+        find_all_href = re.compile(r"https://cr.shopping.naver.com/[\-a-zA-Z\d%&?.=/#_~+()|]+").findall(req.text)
+    find_all_redirects = re.compile(r'targetUrl = "([\-a-zA-Z\d:%&?.=/_#~+()|]+)"').findall(req.text)
+    driver.get(find_all_redirects[0]) if find_all_redirects else driver.get(url)
     tabs = driver.window_handles
-    while len(tabs) > 1:
-        driver.switch_to.window(tabs[1])
+    if len(tabs) > 1:
+        driver.switch_to.window(tabs.pop())
         driver.close()
         driver.switch_to.window(tabs[0])
     wait = WebDriverWait(driver, 30)
@@ -167,13 +173,13 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
     start += display
     body = response.json()
     if "items" in body:
-        with Chrome(executable_path=chrome_path) as driver:
+        with Chrome(executable_path=chrome_path, options=chrome_options) as driver:
             driver.implicitly_wait(10)
             for data in body["items"]:
                 if not bigger_than(data['lprice'], low_price):
                     title = extract_title(data['title'])
                     try:
-                        source, url = redirect_url(driver, data["link"], product_type[data["productType"]])
+                        source, url = redirect_url(driver, data["link"])
                         cs_number = find_cs_number(source)
                         model_name = find_model_name(source, word)
                         host_key = get_host_from_url(url)
