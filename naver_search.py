@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import os
 import re
 import csv
@@ -13,7 +12,9 @@ from selenium.webdriver import Chrome
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+import chromedriver_autoinstaller
 
+chromedriver_autoinstaller.install()
 load_dotenv()
 filename = "data.xlsx"
 sheet_name = "아이템 정보"
@@ -38,6 +39,23 @@ host_dict = dict(
     shopping="https://shopping.naver.com/",
 )
 
+host_ko = {
+    "https://www.11st.co.kr/": "11번가",
+    "https://www.lotteimall.com/": "롯데아이몰",
+    "https://www.lotteon.com/": "롯데온",
+    "http://item.gmarket.co.kr/": "지마켓",
+    "https://www.g9.co.kr/": "지구",
+    "https://with.gsshop.com/": "지에스샵",
+    "https://display.cjonstyle.com/": "온스타일",
+    "http://itempage3.auction.co.kr/": "옥션",
+    "https://shopping.interpark.com/": "인터파크",
+    "https://smartstore.naver.com/": "스마트스토어",
+    "https://front.wemakeprice.com/": "위메프",
+    "https://www.tmon.co.kr/": "티몬",
+    "http://mahaknit.com/": "마하유닛",
+    "https://shopping.naver.com/": "네이버쇼핑",
+}
+
 product_type = {
     "1": "일반상품 가격비교 상품",
     "2": "가격비교 비매칭 일반상품",
@@ -53,21 +71,24 @@ product_type = {
     "12": "가격비교 매칭 판매예정상품",
 }
 
-store_types = {'02-772-3343': '본점', '02-2143-7251': '잠실점', '02-2164-5353': '영등포점', '02-3707-1321': '청량리점',
-               '02-3289-8007': '관악점', '02-531-2224': '강남점', '02-950-2268': '노원점', '02-944-2274': '미아점',
-               '02-2218-3404': '건대점', '02-6116-3051': '김포공항점', '02-6965-2661': '서울역점', '031-738-2217': '분당점',
-               '031-909-3486': '일산점', '032-320-7298': '중동점', '031-412-7772': '안산점', '031-8086-9250': '평촌점',
-               '031-8066-0286': '수원점', '032-242-2234': '인천터미널점', '031-8036-3746': '동탄점', '051-810-4280': '부산본점',
-               '062-221-1308': '광주점', '042-601-2337': '대전점', '054-230-1345': '포항점', '052-960-4954': '울산점',
-               '051-668-4254': '동래점', '055-279-3377': '창원점', '053-660-3322': '대구점', '053-258-3213': '상인점',
-               '063-289-3252': '전주점', '061-801-2156': '남악점', '051-678-3488': '광복점'}
+store_types = {
+    '02-772-3343': '본점', '02-2143-7251': '잠실점', '02-2164-5353': '영등포점', '02-3707-1321': '청량리점',
+    '02-3289-8007': '관악점', '02-531-2224': '강남점', '02-950-2268': '노원점', '02-944-2274': '미아점',
+    '02-2218-3404': '건대점', '02-6116-3051': '김포공항점', '02-6965-2661': '서울역점', '031-738-2217': '분당점',
+    '031-909-3486': '일산점', '032-320-7298': '중동점', '031-412-7772': '안산점', '031-8086-9250': '평촌점',
+    '031-8066-0286': '수원점', '032-242-2234': '인천터미널점', '031-8036-3746': '동탄점', '051-810-4280': '부산본점',
+    '062-221-1308': '광주점', '042-601-2337': '대전점', '054-230-1345': '포항점', '052-960-4954': '울산점',
+    '051-668-4254': '동래점', '055-279-3377': '창원점', '053-660-3322': '대구점', '053-258-3213': '상인점',
+    '063-289-3252': '전주점', '061-801-2156': '남악점', '051-678-3488': '광복점'
+}
 
 store_types2 = {
-    "EB": "본점", "IM": "본점", "BJ": "본점", "IJS": "잠실점", "EYD": "영등포점", "YDP": "영등포점", "ECL": "청량리점", "EGN": "강남점",
-    "ENW": "노원점", "INW": "노원점", "TNW": "노원점", "EGP": "김포공항점", "EIS": "일산점", "ISS": "일산점", "EJD": "중동점", "IJD": "중동점",
-    "EAS": "안산점", "IAS": "안산점", "AS": "안산점", "EPC": "평촌점", "ESW": "수원점", "ISW": "수원점", "ICC": "인천터미널점",
-    "IC": "인천터미널점", "EDT": "동탄점", "IMT": "동탄점", "MDT": "동탄점", "EBS": "부산본점", "EGJ": "광주점", "IJ": "광주점", "EDJ": "대전점",
-    "IDJ": "대전점", "EDR": "동래점", "IDR": "동래점", "EDG": "대구점", "IDG": "대구점", "DGG": "대구점", "EGB": "광복점",
+    "EBJ": "본점", "IBJ": "본점", "EB": "본점", "IB": "본점", "BJ": "본점", "IJS": "잠실점", "EYD": "영등포점", "YDP": "영등포점",
+    "ECL": "청량리점", "EGN": "강남점", "ENW": "노원점", "INW": "노원점", "TNW": "노원점", "EGP": "김포공항점", "EIS": "일산점", "ISS": "일산점",
+    "EJD": "중동점", "IJD": "중동점", "EAS": "안산점", "IAS": "안산점", "AS": "안산점", "EPC": "평촌점", "IM": "평촌점", "ESW": "수원점",
+    "ISW": "수원점", "ICC": "인천터미널점", "IC": "인천터미널점", "EDT": "동탄점", "IMT": "동탄점", "MDT": "동탄점", "EBS": "부산본점",
+    "EGJ": "광주점", "IJ": "광주점", "EDJ": "대전점", "IDJ": "대전점", "EDR": "동래점", "IDR": "동래점", "EDG": "대구점", "IDG": "대구점",
+    "DGG": "대구점", "EGB": "광복점",
 }
 
 
@@ -117,16 +138,16 @@ def redirect_url(url, product_types):
                 btn2.click() if btn2 else None
             tabs = driver.window_handles
             if len(tabs) > 1:
+                driver.close()
                 driver.switch_to.window(tabs[1])
             if driver.current_url.startswith("https://display.cjonstyle.com/"):
-                driver.execute_script('document.querySelector("#promotion_layer > div > div > div > a").click()')
+                driver.find_element("#promotion_layer > div > div > div > a").click()
             wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "body > div")))
             wait.until_not(EC.url_matches(r"https://cr.shopping.naver.com/.*"))
             time.sleep(0.5)
-            page_source = driver.page_source
-            return page_source, driver.current_url
-        except Exception as e:
+        except Exception:
             print("예외 발생", driver.current_url)
+        return driver.page_source, driver.current_url
 
 
 def find_model_name(source, word):
@@ -137,15 +158,14 @@ def find_model_name(source, word):
     return ""
 
 
-def naver_shopping_search(csv_writer: csv.writer, index: int, season: str, word: str, low_price: int | str):
+def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_price: int):
     display = 100
     start = 1
 
-    keyword = quote(word)
     url = f"https://openapi.naver.com/v1/search/shop?" \
-          f"query={keyword}" \
-          f"&display={display}" \
-          f"&start={start}"
+          f"query={quote(word)}" \
+          f"&display={str(display)}" \
+          f"&start={str(start)}"
     headers = {
         "X-Naver-Client-Id": NAVER_CLIENT_ID,
         "X-Naver-Client-Secret": NAVER_CLIENT_SECRET
@@ -157,27 +177,39 @@ def naver_shopping_search(csv_writer: csv.writer, index: int, season: str, word:
         for data in body["items"]:
             if not bigger_than(data['lprice'], low_price):
                 title = extract_title(data['title'])
-                source, url = redirect_url(data["link"], product_type[data["productType"]])
-                cs_number = find_cs_number(source)
-                model_name = find_model_name(source, word)
-                host_name = get_host_from_url(url)
-                row = [index, word, title, cs_number, model_name, season,
-                       int(data["lprice"]), int(low_price),
-                       host_name, url]
-                csv_writer.writerow(row)
-                print(row)
+                try:
+                    source, url = redirect_url(data["link"], product_type[data["productType"]])
+                    cs_number = find_cs_number(source)
+                    model_name = find_model_name(source, word)
+                    host_key = get_host_from_url(url)
+                    host_name = host_ko.get(host_key, host_key)
+                    row = [
+                        index, word, title, cs_number, model_name, season,
+                        int(data["lprice"]), low_price, int(low_price * 0.9),
+                        host_name, url
+                    ]
+                    csv_writer.writerow(row)
+                    print(row)
+                except TypeError:
+                    pass
 
 
-def bigger_than(is_bigger, is_smaller):
-    return int(is_bigger) >= int(is_smaller) * 0.9
+def bigger_than(is_bigger: str, is_smaller: int):
+    discounted_price = is_smaller * 0.9
+    return int(is_bigger) >= discounted_price
 
 
 def main():
     dateformat = datetime.now().strftime("%Y%m%d-%H%M%S")
     new_filename = f"result_{dateformat}.csv"
-    with open(new_filename, mode="w", encoding="utf-8", newline="") as f:
+    with open(new_filename, mode="w", newline="") as f:
         writer = csv.writer(f, delimiter=",", lineterminator="\n")
-        header = ["NO", "스타일코드", "한글명", "지점_연락처", "지점_코드", "시즌", "판매가", "공식할인가", "판매처", "링크"]
+        header = [
+            "NO", "스타일코드", "한글명",
+            "지점_연락처", "지점_코드", "시즌",
+            "판매가", "공식할인가", "추가할인가",
+            "판매처", "링크"
+        ]
         writer.writerow(header)
         wb: Workbook = load_workbook(
             filename=filename,
@@ -189,11 +221,11 @@ def main():
             max_row=worksheet.max_row,
             min_row=2,
             min_col=1,
+            values_only=True,
         )
         for sheet_row in sheet_rows:
             index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = sheet_row
-            naver_shopping_search(writer, index.value, season.value, code.value, dsc_price.value)
-            break
+            naver_shopping_search(writer, index, season, code, dsc_price)
         f.close()
 
 
