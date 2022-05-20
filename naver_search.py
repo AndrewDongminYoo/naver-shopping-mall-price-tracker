@@ -14,7 +14,7 @@ from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
 import chromedriver_autoinstaller
 
-chromedriver_autoinstaller.install()
+chrome_path = chromedriver_autoinstaller.install()
 load_dotenv()
 filename = "data.xlsx"
 sheet_name = "아이템 정보"
@@ -96,7 +96,7 @@ def extract_title(string):
     string = re.sub(r"\[?유닛]?", "", string)
     string = re.sub(r"\[?롯데백화점( 2관)?]?", "", string)
     string = re.sub(r"\[?\(?AVE\)?]?", "", string)
-    string = re.sub(r"\[?\(?<b>.+</b>\)?]?", "", string)
+    string = re.sub(r"</?b>", "", string)
     string = re.sub(r"\s+", " ", string)
     return string.strip()
 
@@ -125,29 +125,22 @@ def get_host_from_url(url_string):
     return host_url
 
 
-def redirect_url(url, product_types):
-    with Chrome() as driver:
-        driver.implicitly_wait(10)
-        wait = WebDriverWait(driver, 30)
-        driver.get(url)
-        try:
-            btn1 = driver.find_element(By.XPATH, "//a[text()='사러가기']") or None
-            btn1.click() if btn1 else None
-            if not product_types.startswith("가격비교"):
-                btn2 = driver.find_element(By.XPATH, "//a[text()='사러가기']") or None
-                btn2.click() if btn2 else None
-            tabs = driver.window_handles
-            if len(tabs) > 1:
-                driver.close()
-                driver.switch_to.window(tabs[1])
-            if driver.current_url.startswith("https://display.cjonstyle.com/"):
-                driver.find_element("#promotion_layer > div > div > div > a").click()
-            wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "body > div")))
-            wait.until_not(EC.url_matches(r"https://cr.shopping.naver.com/.*"))
-            time.sleep(0.5)
-        except Exception:
-            print("예외 발생", driver.current_url)
-        return driver.page_source, driver.current_url
+def redirect_url(driver, url, product_types):
+    find_all_href = [url]
+    req = None
+    while find_all_href:
+        req = requests.get(find_all_href[0], allow_redirects=True)
+        find_all_href = re.compile(r"https://cr.shopping.naver.com/[a-zA-Z\d%&?.=/]+").findall(req.text)
+    find_all_redirects = re.compile(r'targetUrl = "([a-zA-Z\d:%&?.=/_]+)"').findall(req.text)
+    driver.get(find_all_redirects.pop())
+    tabs = driver.window_handles
+    while len(tabs) > 1:
+        driver.switch_to.window(tabs[1])
+        driver.close()
+        driver.switch_to.window(tabs[0])
+    wait = WebDriverWait(driver, 30)
+    wait.until(EC.presence_of_all_elements_located((By.CSS_SELECTOR, "body > div")))
+    return driver.page_source, driver.current_url
 
 
 def find_model_name(source, word):
@@ -174,24 +167,26 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
     start += display
     body = response.json()
     if "items" in body:
-        for data in body["items"]:
-            if not bigger_than(data['lprice'], low_price):
-                title = extract_title(data['title'])
-                try:
-                    source, url = redirect_url(data["link"], product_type[data["productType"]])
-                    cs_number = find_cs_number(source)
-                    model_name = find_model_name(source, word)
-                    host_key = get_host_from_url(url)
-                    host_name = host_ko.get(host_key, host_key)
-                    row = [
-                        index, word, title, cs_number, model_name, season,
-                        int(data["lprice"]), low_price, int(low_price * 0.9),
-                        host_name, url
-                    ]
-                    csv_writer.writerow(row)
-                    print(row)
-                except TypeError:
-                    pass
+        with Chrome(executable_path=chrome_path) as driver:
+            driver.implicitly_wait(10)
+            for data in body["items"]:
+                if not bigger_than(data['lprice'], low_price):
+                    title = extract_title(data['title'])
+                    try:
+                        source, url = redirect_url(driver, data["link"], product_type[data["productType"]])
+                        cs_number = find_cs_number(source)
+                        model_name = find_model_name(source, word)
+                        host_key = get_host_from_url(url)
+                        host_name = host_ko.get(host_key, host_key)
+                        row = [
+                            index, word, title, cs_number, model_name, season,
+                            int(data["lprice"]), low_price, int(low_price * 0.9),
+                            host_name, url
+                        ]
+                        csv_writer.writerow(row)
+                        print(row)
+                    except TypeError:
+                        pass
 
 
 def bigger_than(is_bigger: str, is_smaller: int):
