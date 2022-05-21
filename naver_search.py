@@ -12,16 +12,20 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.wait import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
-import chromedriver_autoinstaller
+from webdriver_manager.chrome import ChromeDriverManager
+import sys
 
-chrome_path = chromedriver_autoinstaller.install()
+if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
+    chrome_path = os.path.join(sys._MEIPASS, 'chromedriver.exe')
+else:
+    chrome_path = ChromeDriverManager().install()
 chrome_options = Options()
 chrome_options.add_argument("--no-sandbox")
-chrome_options.add_argument("--headless")
+# chrome_options.add_argument("--headless")
 chrome_options.add_argument("--disable-gpu")
 chrome_options.add_argument("--remote-debugging-port=9230")
-load_dotenv()
-filename = "data.xlsx"
+load_dotenv("prod.env")
+filename = "크롤링 취합자료.xlsx"
 sheet_name = "아이템 정보"
 
 NAVER_CLIENT_ID = os.getenv('NAVER_CLIENT_ID')
@@ -192,7 +196,7 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
                         csv_writer.writerow(row)
                         print(row)
                     except Exception as e:
-                        print(e.args)
+                        print(e)
 
 
 def bigger_than(is_bigger: str, is_smaller: int):
