@@ -7,6 +7,7 @@ from urllib.parse import quote, urlparse
 from dotenv import load_dotenv
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver import Chrome
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
@@ -19,6 +20,8 @@ if getattr(sys, 'frozen', False) and hasattr(sys, '_MEIPASS'):
     chrome_path = os.path.join(sys._MEIPASS, 'chromedriver.exe')
 else:
     chrome_path = ChromeDriverManager().install()
+chrome_service = Service(chrome_path)
+
 chrome_options = Options()
 chrome_options.add_argument("--no-sandbox")
 # chrome_options.add_argument("--headless")
@@ -177,7 +180,8 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
     start += display
     body = response.json()
     if "items" in body:
-        with Chrome(executable_path=chrome_path, options=chrome_options) as driver:
+        print(body['items'])
+        with Chrome(service=chrome_service, options=chrome_options) as driver:
             driver.implicitly_wait(10)
             for data in body["items"]:
                 if not bigger_than(data['lprice'], low_price):
@@ -197,6 +201,8 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
                         print(row)
                     except Exception as e:
                         print(e)
+    else:
+        print(response.text)
 
 
 def bigger_than(is_bigger: str, is_smaller: int):
