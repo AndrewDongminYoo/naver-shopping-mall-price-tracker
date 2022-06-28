@@ -180,11 +180,13 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
     start += display
     body = response.json()
     if "items" in body:
-        print(body['items'])
         with Chrome(service=chrome_service, options=chrome_options) as driver:
             driver.implicitly_wait(10)
             for data in body["items"]:
-                if not bigger_than(data['lprice'], low_price):
+                if '의류' not in data['category1']:
+                    print(f"{word}: 해당 코드로 패션의류 카테고리가 아닌 상품이 검색됩니다. 키워드를 확인하세요.")
+                    continue
+                elif not bigger_than(data['lprice'], low_price):
                     try:
                         title = extract_title(data['title'])
                         source, url = redirect_url(driver, data["link"])
