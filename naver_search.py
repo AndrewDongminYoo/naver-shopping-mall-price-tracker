@@ -4,6 +4,8 @@ import csv
 import requests
 from datetime import datetime
 from urllib.parse import quote, urlparse
+
+from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from openpyxl import load_workbook, Workbook
 from openpyxl.worksheet.worksheet import Worksheet
@@ -164,12 +166,26 @@ def find_model_name(source, word):
     return ""
 
 
-def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_price: int):
+def scroll_infinite(webdriver):
+    scroll_to_bottom = "window.scrollTo(0, document.body.scrollHeight);"
+    get_window_height = "return document.body.scrollHeight"
+    last_height = webdriver.execute_script(get_window_height)
+    while True:
+        webdriver.execute_script(scroll_to_bottom)
+        import time
+        time.sleep(0.5)
+        new_height = webdriver.execute_script(get_window_height)
+        if new_height == last_height:
+            break
+        last_height = new_height
+
+
+def naver_shopping_search(csv_writer, index: int, season: str, code: str, low_price: int):
     display = 100
     start = 1
 
     url = f"https://openapi.naver.com/v1/search/shop?" \
-          f"query={quote(word)}" \
+          f"query={quote(code)}" \
           f"&display={str(display)}" \
           f"&start={str(start)}"
     headers = {
@@ -184,19 +200,19 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
             driver.implicitly_wait(10)
             for data in body["items"]:
                 if '의류' not in data['category1']:
-                    print(f"{word}: 해당 코드로 패션의류 카테고리가 아닌 상품이 검색됩니다. 키워드를 확인하세요.")
+                    print(f"{code}: 해당 코드로 패션의류 카테고리가 아닌 상품이 검색됩니다. 키워드를 확인하세요.")
                     continue
                 elif not bigger_than(data['lprice'], low_price):
                     try:
                         title = extract_title(data['title'])
                         source, url = redirect_url(driver, data["link"])
                         cs_number = find_cs_number(source)
-                        model_name = find_model_name(source, word)
+                        model_name = find_model_name(source, code)
                         host_key = get_host_from_url(url)
                         host_name = host_ko.get(host_key, host_key)
                         row = [
-                            index, word, title, cs_number, model_name, season,
-                            int(data["lprice"]), low_price, int(low_price * 0.9),
+                            index, code, title, cs_number, model_name, season,
+                            int(data["lprice"]), low_price,
                             host_name, url
                         ]
                         csv_writer.writerow(row)
@@ -208,8 +224,43 @@ def naver_shopping_search(csv_writer, index: int, season: str, word: str, low_pr
 
 
 def bigger_than(is_bigger: str, is_smaller: int):
-    discounted_price = is_smaller * 0.9
-    return int(is_bigger) >= discounted_price
+    return int(is_bigger) >= is_smaller
+
+
+def naver_without_api(csv_writer, index: int, season: str, code: str, korean_name: str, low_price: int):
+    url = f"https://search.shopping.naver.com/search/all" \
+          f"?catId=50000167" \
+          f"&query={code}" \
+          f"&pagingSize=80" \
+          f"&sort=rel"
+    with Chrome(service=chrome_service, options=chrome_options) as driver:
+        driver.get(url)
+        driver.implicitly_wait(10)
+        scroll_infinite(driver)
+        driver.find_elements(By.XPATH, '//*[@id="__next"]/div/div[2]/div/div[3]/div[1]/ul/div/div/li')
+        soup = BeautifulSoup(driver.page_source, "html.parser")
+        for product in soup.select(
+                '#__next > div > div.style_container__1YjHN > div > div.style_content_wrap__1PzEo > div.style_content__2T20F > ul > div > div > li'):
+            lprice = product.select_one(
+                'div > div.basicList_info_area__17Xyo > div.basicList_price_area__1UXXR > strong > span').text
+            lprice = lprice.replace("최저", "").replace("원", "").replace(",", "")
+            title_element = product.select_one(
+                'div > div.basicList_info_area__17Xyo > div.basicList_title__3P9Q7 > a').text
+            link_element = product.select_one(
+                'div > div.basicList_info_area__17Xyo > div.basicList_title__3P9Q7 > a').get('href')
+            if not bigger_than(lprice, low_price):
+                try:
+                    title = extract_title(title_element)
+                    source, url = redirect_url(driver, link_element)
+                    cs_number = find_cs_number(source)
+                    model_name = find_model_name(source, code)
+                    host_key = get_host_from_url(url)
+                    host_name = host_ko.get(host_key, host_key)
+                    row = [index, code, title, cs_number, model_name, season, int(lprice), low_price, host_name, url]
+                    csv_writer.writerow(row)
+                    print(row)
+                except Exception as e:
+                    print(e)
 
 
 def main():
@@ -217,12 +268,7 @@ def main():
     new_filename = f"result_{dateformat}.csv"
     with open(new_filename, mode="w", newline="") as f:
         writer = csv.writer(f, delimiter=",", lineterminator="\n")
-        header = [
-            "NO", "스타일코드", "한글명",
-            "지점_연락처", "지점_코드", "시즌",
-            "판매가", "공식할인가", "추가할인가",
-            "판매처", "링크"
-        ]
+        header = ["NO", "스타일코드", "한글명", "지점_연락처", "지점_코드", "시즌", "판매가", "공식할인가", "판매처", "링크"]
         writer.writerow(header)
         wb: Workbook = load_workbook(
             filename=filename,
@@ -238,7 +284,8 @@ def main():
         )
         for sheet_row in sheet_rows:
             index, code, korean_name, on_off, year, season, tag_price, dsc_price, percent = sheet_row
-            naver_shopping_search(writer, index, season, code, dsc_price)
+            # naver_shopping_search(writer, index, season, code, dsc_price)
+            naver_without_api(writer, index, season, code, korean_name, dsc_price)
         f.close()
 
 
